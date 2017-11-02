@@ -1,94 +1,134 @@
-pipeline 
-{
+pipeline {
   agent none
+
   environment {
     MAJOR_VERSION = 1
   }
-  
+
   stages {
-    stage('Unit Tests') {
-      agent { label 'CentOS'}
+    stage('Say Hello') {
+      agent any
+
       steps {
-        echo 'Testing..'
+        sayHello 'Awesome Student!'
+      }
+    }
+    stage('Git Information') {
+      agent any
+
+      steps {
+        echo "My Branch Name: ${env.BRANCH_NAME}"
+
+        script {
+          def myLib = new linuxacademy.git.gitStuff();
+
+          echo "My Commit: ${myLib.gitCommit("${env.WORKSPACE}/.git")}"
+        }
+      }
+    }
+    stage('Unit Tests') {
+      agent {
+        label 'CentOS'
+      }
+      steps {
         sh 'ant -f test.xml -v'
         junit 'reports/result.xml'
       }
     }
-    stage('Build') { 
-      agent { label 'CentOS'}
+    stage('build') {
+      agent {
+        label 'CentOS'
+      }
       steps {
-        echo 'Building..'
         sh 'ant -f build.xml -v'
       }
-       
-  post {
-    success {
-      archiveArtifacts artifacts: 'dist/*.jar', fingerprint: true
+      post {
+        success {
+          archiveArtifacts artifacts: 'dist/*.jar', fingerprint: true
+        }
+      }
     }
-  }
-  
-    }
-    
-    stage('deploy') { 
-      agent { label 'CentOS'}
+    stage('deploy') {
+      agent {
+        label 'CentOS'
+      }
       steps {
-        sh "mkdir /var/www/html/rectangles/all/${env.BRANCH_NAME}"
+        sh "if ![ -d '/var/www/html/rectangles/all/${env.BRANCH_NAME}' ]; then mkdir /var/www/html/rectangles/all/${env.BRANCH_NAME}; fi"
         sh "cp dist/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar /var/www/html/rectangles/all/${env.BRANCH_NAME}/"
       }
     }
-      
-    stage('Running on Centos') { 
-      agent { label 'CentOS'}
-      steps {
-        sh "wget http://hultanu4.mylabserver.com/rectangles/all/${env.BRANCH_NAME}/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar"
-        sh "java -jar rectangle_${env.BUILD_NUMBER}.jar 3 4"
+    stage("Running on CentOS") {
+      agent {
+        label 'CentOS'
       }
-    }
-    
-      
-    stage('Test on Debian') { 
-      agent { label 'CentOS'}
       steps {
-      echo "not gonna run agent { docker 'openjdk:8u121-jre'}"
-        sh "wget http://hultanu4.mylabserver.com/rectangles/all/${env.BRANCH_NAME}/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar"
+        sh "wget http://brandon4231.mylabserver.com/rectangles/all/${env.BRANCH_NAME}/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar"
         sh "java -jar rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar 3 4"
       }
     }
-    
-    stage('Promote to green') { 
-      agent { label 'CentOS'}
-      when {
-        branch 'master' 
+    stage("Test on Debian") {
+      agent {
+        docker 'openjdk:8u121-jre'
       }
       steps {
-        sh "cp /var/www/html/rectangles/all/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar /var/www/html/rectangles/green/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar"
+        sh "wget http://brandon4231.mylabserver.com/rectangles/all/${env.BRANCH_NAME}/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar"
+        sh "java -jar rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar 3 4"
       }
     }
-    
-    stage('Promote Development branch to MASTER') { 
-      agent { label 'CentOS'}
+    stage('Promote to Green') {
+      agent {
+        label 'CentOS'
+      }
       when {
-        branch 'development' 
+        branch 'master'
       }
       steps {
-        echo "Stashing any local changes"
+        sh "cp /var/www/html/rectangles/all/${env.BRANCH_NAME}/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar /var/www/html/rectangles/green/rectangle_${env.MAJOR_VERSION}.${env.BUILD_NUMBER}.jar"
+      }
+    }
+    stage('Promote Development Branch to Master') {
+      agent {
+        label 'CentOS'
+      }
+      when {
+        branch 'development'
+      }
+      steps {
+        echo "Stashing Any Local Changes"
         sh 'git stash'
-        echo 'Checking out development branch'
+        echo "Checking Out Development Branch"
         sh 'git checkout development'
-        echo 'checking out master branch'
+        echo 'Checking Out Master Branch'
         sh 'git pull origin'
         sh 'git checkout master'
-        echo 'merging into master branch'
+        echo 'Merging Development into Master Branch'
         sh 'git merge development'
-        echo 'pushing to origin master'
+        echo 'Pushing to Origin Master'
         sh 'git push origin master'
-        echo "Tagging the release"
+        echo 'Tagging the Release'
         sh "git tag rectangle-${env.MAJOR_VERSION}.${env.BUILD_NUMBER}"
+        sh "git push origin rectangle-${env.MAJOR_VERSION}.${env.BUILD_NUMBER}"
+      }
+      post {
+        success {
+          emailext(
+            subject: "${env.JOB_NAME} [${env.BUILD_NUMBER}] Development Promoted to Master",
+            body: """<p>'${env.JOB_NAME} [${env.BUILD_NUMBER}]' Development Promoted to Master":</p>
+            <p>Check console output at &QUOT;<a href='${env.BUILD_URL}'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p>""",
+            to: "iulia@cloud-ro.com"
+          )
+        }
       }
     }
-    
-    
-    
   }
- 
+  post {
+    failure {
+      emailext(
+        subject: "${env.JOB_NAME} [${env.BUILD_NUMBER}] Failed!",
+        body: """<p>'${env.JOB_NAME} [${env.BUILD_NUMBER}]' Failed!":</p>
+        <p>Check console output at &QUOT;<a href='${env.BUILD_URL}'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p>""",
+        to: "iulia@cloud-ro.com"
+      )
+    }
+  }
 }
