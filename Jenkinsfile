@@ -1,6 +1,6 @@
 pipeline 
 {
-  agent { label 'CentOS'}
+  agent none
   
   options {
     buildDiscarder(logRotator(numToKeepStr: '2', artifactNumToKeepStr: '1'))
@@ -9,13 +9,15 @@ pipeline
   
   stages {
     stage('Unit Tests') {
+      agent { label 'CentOS'}
       steps {
         echo 'Testing..'
         sh 'ant -f test.xml -v'
         junit 'reports/result.xml'
       }
     }
-    stage('Build') {
+    stage('Build') { 
+      agent { label 'CentOS'}
       steps {
         echo 'Building..'
         sh 'ant -f build.xml -v'
@@ -23,8 +25,17 @@ pipeline
     }
     
     stage('deploy') { 
+      agent { label 'CentOS'}
       steps {
         sh "cp dist/rectangle_${env.BUILD_NUMBER}.jar /var/www/html/rectangles/all/"
+      }
+    }
+      
+    stage('Running on Centos') { 
+      agent { label 'CentOS'}
+      steps {
+        sh "wget http://hultanu4.mylabserver.com/rectangles/all/rectangle_${env.BUILD_NUMBER}.jar"
+        sh "java -jar rectangle_${env.BUILD_NUMBER}.jar 3 4"
       }
     }
   }
