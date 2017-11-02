@@ -8,6 +8,13 @@ pipeline
   
   
   stages {
+    stage('Unit Tests') {
+      steps {
+        echo 'Testing..'
+        sh 'ant -f test.xml -v'
+        junit 'reports/result.xml'
+      }
+    }
     stage('Build') {
       steps {
         echo 'Building..'
